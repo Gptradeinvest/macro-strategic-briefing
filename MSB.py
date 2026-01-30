@@ -18,8 +18,11 @@ import torch
 os.environ.setdefault("OMP_NUM_THREADS", "4")
 os.environ.setdefault("MKL_NUM_THREADS", "4")
 os.environ.setdefault("TOKENIZERS_PARALLELISM", "false")
-torch.set_num_threads(4)
-torch.set_num_interop_threads(1)
+try:
+    torch.set_num_threads(4)
+    torch.set_num_interop_threads(1)
+except RuntimeError:
+    pass
 
 from bs4 import BeautifulSoup
 import feedparser
@@ -169,9 +172,16 @@ class Database:
             c.execute("PRAGMA synchronous=NORMAL")
             c.execute("PRAGMA busy_timeout=30000")
             c.execute(self._SCHEMA)
+            self._migrate(c)
             for idx in self._IDX:
                 c.execute(idx)
             c.commit()
+    
+    def _migrate(self, c: sqlite3.Connection):
+        cur = c.execute("PRAGMA table_info(articles)")
+        cols = {r[1] for r in cur.fetchall()}
+        if 'is_duplicate' not in cols:
+            c.execute("ALTER TABLE articles ADD COLUMN is_duplicate INTEGER DEFAULT 0")
     
     def insert(self, article: Dict) -> bool:
         try:
